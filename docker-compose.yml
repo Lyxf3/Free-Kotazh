@@ -1,0 +1,112 @@
+version: '3.8'
+
+services:
+  db:
+    container_name: general-database
+    image: postgres:12.0-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_DB=${DATABASE_NAME}
+      - POSTGRES_USER=${DATABASE_USER}
+      - POSTGRES_PASSWORD=${DATABASE_PASSWORD}
+    networks:
+    - back_network
+  
+  redis:
+    container_name: general-redis
+    image: redis:alpine
+    restart: always
+    networks:
+    - back_network
+
+  back:
+    image: general-backend
+    container_name: general-back
+    working_dir: /usr/src/app/
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - .:/usr/src/app/
+      - back-static:/usr/src/app/allstaticfiles
+      - back-media:/usr/src/app/media
+    ports:
+      - 8000:8000
+    environment:
+      - DATABASE_NAME=${DATABASE_NAME}
+      - DATABASE_USER=${DATABASE_USER}
+      - DATABASE_HOST=${DATABASE_HOST}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
+      - DATABASE_PORT=${DATABASE_PORT}
+      - ENGINE=django.db.backends.postgresql_psycopg2
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+    depends_on:
+      - db
+    networks:
+    - back_network
+  
+  celery:
+    image: general-backend
+    container_name: general-celery
+    working_dir: /usr/src/app/
+    command: celery -A website worker -l error -c 2
+    volumes:
+      - .:/usr/src/app/
+      - back-static:/usr/src/app/allstaticfiles
+      - back-media:/usr/src/app/media
+    environment:
+      - DATABASE_NAME=${DATABASE_NAME}
+      - DATABASE_USER=${DATABASE_USER}
+      - DATABASE_HOST=${DATABASE_HOST}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
+      - DATABASE_PORT=${DATABASE_PORT}
+      - ENGINE=django.db.backends.postgresql_psycopg2
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - db
+      - redis
+    networks:
+    - back_network
+    
+  celery-beat:
+    image: general-backend
+    container_name: general-celery-beat
+    command: celery -A website beat -l error
+    volumes:
+      - .:/usr/src/app/
+      - back-static:/usr/src/app/allstaticfiles
+      - back-media:/usr/src/app/media
+    environment:
+      - DATABASE_NAME=${DATABASE_NAME}
+      - DATABASE_USER=${DATABASE_USER}
+      - DATABASE_HOST=${DATABASE_HOST}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
+      - DATABASE_PORT=${DATABASE_PORT}
+      - ENGINE=django.db.backends.postgresql_psycopg2
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - db
+      - redis
+      - celery
+    networks:
+    - back_network
+
+networks:
+  back_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  back-static:
+  back-media:
+
+  
